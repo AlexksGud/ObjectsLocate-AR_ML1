@@ -2,6 +2,7 @@ using MagicLeap.Core;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.XR.MagicLeap;
+using MagicLeap.Core.StarterKit;
 
 namespace MagicLeap
 {
@@ -37,9 +38,10 @@ namespace MagicLeap
 
         private float _confidence = 0.0f;
 
-        public GameObject[] screens;
-        public GameObject currentScreenMesh;
-        public DetectRayAndPlace currentWall;
+        public TV[] screens;
+        public TV currentScreenMesh;
+        public Wall currentWall;
+        public TV currentTV;
         public Transform controller;
 
 
@@ -71,7 +73,7 @@ namespace MagicLeap
                 return;
             }
 
-            _raycastController.gameObject.SetActive(false);
+            // _raycastController.gameObject.SetActive(false);
 
             _raycastMode = RaycastMode.Controller;
 
@@ -91,18 +93,19 @@ namespace MagicLeap
             if (currentWall == null)
                 return;
 
-            var degreeZ = controller.transform.rotation.eulerAngles.x;
-            var degreeY = controller.transform.rotation.eulerAngles.y;
+            float rotationAngle = currentWall.televisionRotationAngle;
 
-            print($"Degree Y :{degreeY}");
+            if (currentWall.xorZWallFixedCoor == XorZWallFixedCoor.X)
+            {
+                hitPos.x = currentWall.transform.position.x;
+            }
+            else
+            {
+                hitPos.z = currentWall.transform.position.z;
+            }
 
-            if (degreeZ > 120)
-                degreeZ = degreeZ - 360;
-
-            float normalizedZ_Value = 1 - Mathf.InverseLerp(-40, 60, degreeZ);
-            float normalizedY_Value = 1 - Mathf.InverseLerp(-45, 45, degreeY);
-
-            currentWall.SetScreen(normalizedY_Value, normalizedZ_Value);
+            currentTV.transform.position = hitPos;
+            currentTV.transform.rotation = Quaternion.Euler(0f, rotationAngle, 0f);
         }
 
 
@@ -143,7 +146,13 @@ namespace MagicLeap
         {
             if (button == MLInput.Controller.Button.Bumper)
             {
-                LocateScreen();
+                if(locatedTV!=null) 
+                {
+                    Destroy(locatedTV.gameObject);
+                    locatedTV = null;
+                }
+                else
+                 LocateScreen();
 
             }
 
@@ -153,11 +162,20 @@ namespace MagicLeap
             }
 
         }
-        private void LocateScreen() { currentWall.SaveScreenOnWall(); }
+        private void LocateScreen()
+        {
+
+            currentTV.Located = true;
+            var mesh = Instantiate(currentScreenMesh);
+            currentTV = mesh;
+        }
 
         private int scrIndx = 0;
         private void ChangeScreen()
         {
+            if (currentTV != null)
+                Destroy(currentTV.gameObject);
+
             if (scrIndx == 0)
             {
                 scrIndx = 1;
@@ -168,34 +186,67 @@ namespace MagicLeap
                 scrIndx = 2;
                 currentScreenMesh = screens[2];
             }
+            else if (scrIndx == 2)
+            {
+                scrIndx = 3;
+                currentTV = null;
+                return; 
+            }
             else
             {
+
+
                 scrIndx = 0;
                 currentScreenMesh = screens[0];
             }
 
 
             var mesh = Instantiate(currentScreenMesh);
-            currentWall.SetScreenMesh(mesh);
+            currentTV = mesh;
         }
+
+        private Vector3 hitPos;
+        private TV locatedTV;
 
         public void OnRaycastHit(MLRaycast.ResultState state, MLRaycastBehavior.Mode mode, Ray ray, RaycastHit result, float confidence)
         {
-            // _confidence = confidence;
-
-            if (result.collider.TryGetComponent<DetectRayAndPlace>(out var wall))
+            locatedTV = null;
+            hitPos = result.point;
+            
+            if (scrIndx != 3)
             {
-                if (currentWall != null)
-                    if (currentWall.ID == wall.ID)
-                        return;
+              
+                if (result.collider.TryGetComponent<Wall>(out var wall))
+                {
 
-                var mesh = Instantiate(currentScreenMesh);
+                    
 
-                if (currentWall != null)
-                    currentWall.ForgetWall();
+                    if (currentWall != null)
+                        if (currentWall.ID == wall.ID)
+                            return;
 
-                wall.ChooseWall(mesh);
-                currentWall = wall;
+                    if (currentTV == null)
+                     currentTV = Instantiate(currentScreenMesh);
+
+                    if (currentWall != null)
+                        currentWall.ForgetWall();
+
+                    currentWall = wall;
+                }
+
+            }
+            else
+            {
+                if (result.collider.TryGetComponent<TV>(out var tv))
+                {
+                    if (tv.Located)
+                        locatedTV = tv;
+
+
+                }
+
+
+
             }
         }
     }
